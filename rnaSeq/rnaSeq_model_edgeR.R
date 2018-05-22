@@ -15,55 +15,6 @@ library(tidyr)
 #### Setup ####
 setwd("C:/Users/DBC/OneDrive/Courses/Summer_2017/RNASeq")
 
-# # Import HTSeq count data for each cell line and treatment ####
-# M_G561_ctrl <- read.table("G561_ctrlAligned_reverse_HTseq_count.txt",stringsAsFactors=F, row.names=1, header=F)
-# dim(M_G561_ctrl)
-# class(M_G561_ctrl[,1])
-# 
-# M_G561_drug=read.table("G561_drugAligned_reverse_HTseq_count.txt",stringsAsFactors=F, row.names=1, header=F)
-# dim(M_G561_drug)
-# class(M_G561_drug[,1])
-# 
-# 
-# M_G564_ctrl=read.table("G564_ctrlAligned_reverse_HTseq_count.txt",stringsAsFactors=F, row.names=1, header=F)
-# dim(M_G564_ctrl)
-# class(M_G564_ctrl[,1])
-# 
-# M_G564_drug=read.table("G564_drugAligned_reverse_HTseq_count.txt",stringsAsFactors=F, row.names=1, header=F)
-# dim(M_G564_drug)
-# class(M_G564_drug[,1])
-# 
-# 
-# M_G583_ctrl=read.table("G583_ctrlAligned_reverse_HTseq_count.txt",stringsAsFactors=F, row.names=1, header=F)
-# dim(M_G583_ctrl)
-# class(M_G583_ctrl[,1])
-# 
-# M_G583_drug=read.table("G583_drugAligned_reverse_HTseq_count.txt",stringsAsFactors=F, row.names=1, header=F)
-# dim(M_G583_drug)
-# class(M_G583_drug[,1])
-# 
-# # Check that each dataset has the same rows (Quality checking) ####
-# table(rownames(M_G561_ctrl)==rownames(M_G561_drug))
-# table(rownames(M_G561_ctrl)==rownames(M_G564_ctrl))
-# table(rownames(M_G561_ctrl)==rownames(M_G564_drug))
-# table(rownames(M_G561_ctrl)==rownames(M_G583_ctrl))
-# table(rownames(M_G561_ctrl)==rownames(M_G583_drug))
-# 
-# # The last 5 rows give the summary for each data set ####
-# tail(rownames(M_G561_ctrl))
-# 
-# ## > tail(rownames(M_G561_ctrl))
-# ## [1] "ZZZ3"                   "__no_feature"           "__ambiguous"           
-# ## [4] "__too_low_aQual"        "__not_aligned"          "__alignment_not_unique"
-# 
-# # Extract the summary info into one matrix
-# M_info_count=cbind("G561_ctrl"=M_G561_ctrl[26486:26490,1],"G564_ctrl"=M_G564_ctrl[26486:26490,1],"G583_ctrl"=M_G583_ctrl[26486:26490,1],"G561_drug"=M_G561_drug[26486:26490,1],"G564_drug"=M_G564_drug[26486:26490,1],"G583_drug"=M_G583_drug[26486:26490,1])
-# rownames(M_info_count)=rownames(M_G561_ctrl)[26486:26490]
-# head(M_info_count)
-# 
-# # Extract the actual counts data into one matrix ####
-# M_count=cbind("G561_ctrl"=M_G561_ctrl[1:26485,1],"G564_ctrl"=M_G564_ctrl[1:26485,1],"G583_ctrl"=M_G583_ctrl[1:26485,1],"G561_drug"=M_G561_drug[1:26485,1],"G564_drug"=M_G564_drug[1:26485,1],"G583_drug"=M_G583_drug[1:26485,1])
-# rownames(M_count) <- rownames(M_G561_ctrl)[1:26485]
 load("M_count.RData") ####
 class(M_count)
 dim(M_count)
@@ -166,43 +117,3 @@ sum(result$FDR < 0.05)
 summary(decideTests(LRT, p.value = 0.05))
 
 #summary(decideTests(QLF, p.value = 0.05))
-
-# # Plot all LFCs vs Average count size
-# # Darkgreen lines indicate 2-fold up or down
-# plotMD(LRT, cex = 0.4, main = "Drug vs Control")
-# abline(h = c(-1,1), col = "darkgreen")
-# 
-# plotSmear(LRT, cex = 0.4, de.tags = DE, main = "Drug vs Control")
-# abline(h = c(-1,1), col = "darkgreen")
-# 
-# plotMD(QLF, cex = 0.4, main = "Drug vs Control")
-# abline(h = c(-1,1), col = "darkgreen")
-
-# # Comparison with DESeq2 ####
-# edgeR <- topTags(LRT, n = nrow(dge))$table
-# DESeq2 <- as.data.frame(res05)
-# 
-# addmargins(table(sig.edgeR = edgeR$FDR < 0.05, sig.DESeq2 = DESeq2$padj < 0.05))
-# 
-# tab <- merge(x = edgeR, y = DESeq2, by = "row.names")
-# 
-# with(tab, 
-#      plot(logFC, log2FoldChange, pch = 20, col = "black",
-#           xlab = "LFC egdeR", ylab = "LFC DESeq2",
-#           main = "LFC for edgeR vs DESeq2"))
-# 
-# with(subset(tab, FDR < 0.05), 
-#      points(logFC, log2FoldChange, pch = 20, col = "red"))
-# 
-# with(subset(tab, padj < 0.05),
-#      points(logFC, log2FoldChange, pch = 20, col = "green"))
-# 
-# legend("topleft", xjust = 1, yjust = 1, pch = 20,
-#        legend = c("FDR < 0.05 edgeR only", "FDR < 0.05 both", "FDR > 0.05"),
-#        col = c("red", "green", "black"), cex = 0.7, text.width = 0.7 )
-# 
-# edgeR_DE <- row.names(edgeR[which(edgeR$FDR < 0.05), ])
-# DESeq2_DE <- row.names(DESeq2[which(DESeq2$padj < 0.05), ])
-# 
-# diff <- setdiff(edgeR_DE, DESeq2_DE)
-# write.csv(diff, "DEGenes_SetDiff_edgeR_DESeq2.csv")
