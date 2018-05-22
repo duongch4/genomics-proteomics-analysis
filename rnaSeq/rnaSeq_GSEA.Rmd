@@ -1,0 +1,459 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Gene Set Enrichment Analysis GSEA
+
+## Define threshold for GSEA enrichments (need to be strings for cyrest call)
+
+```{r}
+pvalue_gsea_threshold <- 0.05
+qvalue_gsea_threshold <- 0.05
+
+similarity_threshold <- 0.375
+similarity_metric = "COMBINED"
+#similarity_metric = "OVERLAP"
+```
+
+## Create files to be used with GSEA
+
+```{r}
+#### LIBRARIES and SOURCES ####
+library(data.table)
+
+#### LOAD DATA ####
+getwd()
+setwd("C:/Users/chiba/OneDrive/Courses/Summer_2017/RNASeq")
+result <- readRDS("result_dge.rds")
+
+#### SETUP ####
+LFC_col <- "logFC"
+pval_col <- "PValue"
+qval_col <- "FDR"
+Genes_col <- "genes"
+
+dataType <- "rnaseq"
+contrast <- "GSK591_Vs_SGC2096"
+condition1 <- "GSK591"
+condition2 <- "SGC2096"
+
+result <- setDT(result, key = qval_col)
+
+#### STORAGE ####
+folderName <- paste(dataType, contrast, sep = "_")
+currentStorage <- paste(getwd(), folderName, sep = "/")
+dir.create(path = currentStorage, showWarnings = TRUE)
+
+dir.create(path = paste(currentStorage, "Fig", sep = "/"), showWarnings = TRUE)
+dir.create(path = paste(currentStorage, "Fig", "GSEA", sep = "/"), showWarnings = TRUE)
+
+# Filenames
+rank_filename <- paste(currentStorage, paste(dataType, contrast, paste("fdr", qvalue_gsea_threshold*100, sep = ""), "rank.rnk", sep = "_"), sep = "/")
+
+# Rank file
+rank <- sign(result[[LFC_col]]) * (-log10(result[[pval_col]]))
+rankFile <- data.table(Gene.names = result[[Genes_col]], Rank = rank)
+fwrite(rankFile, file = rank_filename, col.name = TRUE, sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+## Download the latest geneset file
+
+```{r}
+library(RCurl)
+gs_url <- "http://download.baderlab.org/EM_Genesets/current_release/Human/symbol/"
+
+filenames <- getURL(gs_url)
+tc <- textConnection(filenames)
+contents <- readLines(tc)
+close(tc)
+```
+
+
+```{r}
+# GMT library directory
+gsea_java_gmt_dir <- "C:/Users/chiba/OneDrive/R_GSEA_Javas_GeneSetGMT"
+
+# Only get the file that contains all sources
+rx <- gregexpr("(?<=<a href=\")(Human_GOBP_AllPathways_no_GO_iea.*.)(_symbol.gmt)(?=\">)", contents, perl = TRUE)
+#rx <- gregexpr("(?<=<a href=\")(Human_GOBP_AllPathways_with_GO_iea.*.)(_symbol.gmt)(?=\">)", contents, perl = TRUE)
+
+gmt_file <- unlist(regmatches(contents, rx))
+
+dest_gmt_file <- paste(gsea_java_gmt_dir, gmt_file, sep = "/")
+
+download.file(
+    paste(gs_url, gmt_file, sep = "/"),
+    destfile = dest_gmt_file
+)
+```
+
+## Run GSEA
+(GSEA)[http://software.broadinstitute.org/gsea/index.jsp] is a stand alone java program with many customizable options.  It can be easily run through its integrated user interface.  To make this a seemless pipeline we can run GSEA from the command line with a set of options.  Any of the supplied options can be customized and there are many additional options that can be specified.  For more details see (here)[http://software.broadinstitute.org/gsea/doc/GSEAUserGuideTEXT.htm#_Running_GSEA_from]
+
+In the below command the following options have been specified:
+
+ * rnk - path to the rank file
+ * gmx - path to the gene set definition (gmt) file
+ * collapse - true/false indicates whether the expression/rnk file needs to be collapsed from probes to gene symbols
+ * nperm - number of permutations
+ * permute - permute gene sets or phentoypes.  For GSEA preranked you can only permute genesets.
+ * scoring_scheme - 
+ * rpt_label - name of the directory with output
+ * num - number of results to plot output file for
+ * rnd_seed - random seed to use
+ * set_max - maximum size for individual gene sets.  In GSEA interface this is set to 500 but we prefer to use a more stringent setting of 200. 
+ * set_min - minimum size for individual gene sets 
+ * zip_report - true/false to zip output directory
+ * out - directory where to place the result directory.
+ * gui - true/false. When running GSEA from the commandline this needs to be false.
+ 
+ 
+```{bash}
+#(There is no bash shell on windows so execute the command through a system call instead) 
+#java -Xmx2G  -cp ./gsea2-2.2.4.jar xtools.gsea.GseaPreranked -rnk "./DrugVsControl_RNAseq_ranks.rnk"  -gmx  "./Human_GOBP_AllPathways_no_GO_iea_May_01_2017_symbol.gmt" -collapse false -nperm 1000 -permute gene_set -scoring_scheme weighted -rpt_label DrugVsControl_GSEA_Output -num 100 -plot_top_x 20 -rnd_seed 12345  -set_max 200 -set_min 15 -zip_report false -out ./ -gui false > gsea_output.txt
+```
+
+```{r}
+# If you want to run GSEA change to true but if you already have run GSEA and the results are in the current
+# working directory keep this parameter as FALSE
+run_gsea <- TRUE
+gseaOutLabel <- paste(".", folderName, paste(dataType, contrast, paste("fdr", qvalue_gsea_threshold*100, sep = ""), "no_iea", sep = "_"), sep = "/")
+#gseaOut <- paste(paste(".", folderName, sep = "/"), "/", sep = "")
+
+if(run_gsea){
+  command <- paste("java -cp", paste(gsea_java_gmt_dir, "gsea2-2.2.4.jar", sep = "/"),
+                   "-Xmx1G xtools.gsea.GseaPreranked",
+                   "-rnk", rank_filename,
+                   "-gmx", dest_gmt_file,
+                   "-collapse false", "-nperm 1000", "-permute gene_set", "-scoring_scheme weighted",
+                   "-rpt_label", gseaOutLabel,
+                   "-num 100", "-plot_top_x 20", "-rnd_seed 12345", "-set_max 200", "-set_min 15", "-zip_report false",
+                   "-out", "./",
+                   "-gui false", "> gsea_output.txt",
+                   sep = " ")
+
+  system(command, wait = TRUE, ignore.stdout = TRUE)
+}
+```
+## Get the name of the GSEA output directory
+Although GSEA allows you to specify the name of the output directory and the destination folder it add additional words and numbers to the folder name.  Some are predictable and some are automatically generated.  Get all the GSEA results directories found in the current directory.  If there are multiple GSEA results folders each will be used to create an enrichment map.
+
+```{r}
+gsea_directories <- list.files(path = currentStorage, pattern = "no_iea.GseaPreranked")
+```
+
+## Launch Cytoscape
+Create EM through Cyrest interface - make sure you open cytoscape with a -R 1234 (to enable rest functionality) and allow R to talk directly to cytoscape.
+
+Launch Cytoscape (by default cytoscape will automatically enable rest so as long as cytoscape 3.3 or higher is open R should be able to communicate with it). Install the App "Enrichment map" from inside Cytoscape!!
+
+## Set up connection from R to cytoscape (already open Cytoscape)
+
+```{r}
+library(RJSONIO)
+
+library(httr)
+# Basic settings
+port.number = 1234
+base.url = paste("http://localhost:", toString(port.number), "/v1", sep="")
+
+print(base.url)
+
+version.url = paste(base.url, "version", sep="/")
+cytoscape.version = GET(version.url)
+cy.version = fromJSON(rawToChar(cytoscape.version$content))
+print(cy.version)
+
+enrichmentmap.url <- paste(base.url, "commands", "enrichmentmap", "build", sep="/")
+```
+
+## Create Enrichment Map
+
+# Helper function to rename enrichment maps
+```{r}
+
+rename_cyto_network <- function(base.url, new_name, network_suid){
+  
+#change the name of the network
+  key_value_pairs <- c()
+  current <- list(id = paste(network_suid), name = new_name)
+  key_value_pairs <- c(key_value_pairs, list(current))
+  
+  selection <- list(key = "SUID", dataKey = "id", data = key_value_pairs)
+  
+  selection <- toJSON(selection)
+  
+  update.name.url <- paste(base.url, "networks", network_suid, "tables/defaultnetwork", sep="/")
+  
+  response <- PUT(url = update.name.url,  
+                  body = selection, encode = "json")
+  return(response)
+}
+```
+
+# Main
+
+```{r}
+# Get the current network ids before we add any networks.
+network_ids <- fromJSON(httr::content(GET(url = paste(base.url, "networks", sep = "/")), "text", encoding = "ISO-8859-1"))
+
+# Table with network suid to network names
+network_names <- c()
+
+# Go through each of the GSEA results files directories
+for(i in 1:length(gsea_directories)){
+
+  cur_gsea_results <- gsea_directories[i]
+  
+  gsea_results_filename <- paste(currentStorage, cur_gsea_results, "edb", "results.edb", sep = "/")
+  edb_gmt_file <- paste(currentStorage, cur_gsea_results, "edb", "gene_sets.gmt", sep = "/")
+  
+  em_params <- list(analysisType = "gsea", gmtFile = edb_gmt_file,
+                    pvalue = pvalue_gsea_threshold, qvalue = qvalue_gsea_threshold, similaritycutoff = similarity_threshold,
+                    enrichmentsDataset1 = gsea_results_filename,
+                    coeffecients = similarity_metric)
+
+  response <- GET(url = enrichmentmap.url, query = em_params)
+  
+  #rename network name
+  network_suid <- fromJSON(httr::content(GET(url = paste(base.url, "networks", sep = "/")), "text", encoding = "ISO-8859-1"))
+
+  #to get the current network id figure out which is the new id
+  current_network_suid <- setdiff(network_suid, network_ids)
+  network_ids <-  c(network_ids, current_network_suid)
+  rename_cyto_network(base.url, cur_gsea_results, current_network_suid)
+  
+  #only add if there is a network suid
+  if(length(current_network_suid) > 0){
+    network_names <- rbind(network_names, c(cur_gsea_results, unlist(current_network_suid)))
+  }
+}
+```
+
+## Analyze an individual network in detail 
+
+```{r}
+network_suid <- network_ids[1]
+
+# Change EM number accordingly with the network of interest
+EM <- "EM1"
+```
+
+## Cluster the Network
+
+Find highly connected areas of the network.  Clusters contain similiar pathways that share a high percentage of genes.
+
+```{r}
+clustermaker.url <- paste(base.url, "commands", "cluster", "mcl", sep = "/") 
+
+clustermaker_params <- list(attribute = paste(EM, "similarity_coefficient", sep = "_"))
+
+response <- GET(url = clustermaker.url, query = clustermaker_params)
+
+httr::content(response, as = "text", type = "html", encoding = "ISO-8859-1")
+```
+
+## Get cyotscape network info using cyrest (not RCy3)
+
+```{r}
+getNode.url <-  paste(base.url, "networks", network_suid, "tables", "defaultnode", sep = "/") 
+#returns the node table as part of data structure containing SSUID, title, public, mutable, primary key and rows
+tabNode <- fromJSON(httr::content(GET(url = getNode.url), "text", encoding = "ISO-8859-1"))
+default_node_table <- tabNode$rows
+
+getEdge.url <- paste(base.url, "networks", network_suid, "tables", "defaultedge", sep = "/") 
+#returns the edge table as part of data structure containing SSUID, title, public, mutable, primary key and rows
+tabEdge <- fromJSON(httr::content(GET(url = getEdge.url), "text", encoding = "ISO-8859-1"))
+default_edge_table <- tabEdge$rows
+```
+
+### Get the cluster information
+
+```{r}
+# Construct a Node table summary
+NodeTable <- lapply(default_node_table, function(item) {
+  item[[paste(EM, "Genes", sep = "_")]] <- paste(item[[paste(EM, "Genes", sep = "_")]], collapse = "|")
+  item <- as.data.table(item)
+})
+
+NodeTable <- lapply(NodeTable, function(dt) {
+ dt[, .SD, .SDcols = grep(pattern = paste("NES", "gs_size", "pvalue", "qvalue", "^name$", "GS_DESCR", "mclCluster", "Genes", sep = "|"),
+                          x = names(dt), perl = TRUE)]
+}) 
+
+NodeTable <- rbindlist(NodeTable, fill = TRUE)
+
+setcolorder(NodeTable, neworder = c(grep("mclCluster",names(NodeTable)), grep("gs_size",names(NodeTable)),
+                                    grep("name",names(NodeTable)), grep("GS_DESCR",names(NodeTable)), grep("Genes",names(NodeTable)),
+                                    grep("NES",names(NodeTable)),
+                                    grep("pvalue",names(NodeTable)),
+                                    grep("fdr",names(NodeTable)),
+                                    grep("fwer",names(NodeTable))
+                                    ))
+
+names(NodeTable) <- sub(pattern = "EM1_", replacement = "", x = names(NodeTable))
+setnames(NodeTable, c("ClusterNumber", "GS_Size", "Name", "GS_Description", "Genes", "NES", "pvalue", "fdr_qvalue", "fwer_qvalue"))
+
+fwrite(setorderv(NodeTable, cols = "ClusterNumber", order = 1),
+       file = paste(currentStorage, "Fig", "GSEA",
+                    paste(dataType, contrast, paste("fdr", qvalue_gsea_threshold*100, sep = ""), "no_iea", "NodeTable.csv", sep = "_"),
+                    sep = "/"),
+       row.names = FALSE)
+
+# Construct an Edge table summary
+EdgeTable <- lapply(default_edge_table, function(item) {
+  item[[paste(EM, "Overlap_genes", sep = "_")]] <- paste(item[[paste(EM, "Overlap_genes", sep = "_")]], collapse = "|")
+  item <- as.data.table(item)
+})
+
+EdgeTable <- lapply(EdgeTable, function(dt) {
+  dt[, .SD, .SDcols = grep(pattern = paste("^name$", "size", "Overlap_genes", "similarity_coef", sep = "|"),
+                           x = names(dt), perl = TRUE)]
+})
+
+EdgeTable <- rbindlist(EdgeTable, fill = TRUE)
+
+setcolorder(EdgeTable, neworder = c(grep("size",names(EdgeTable)), grep("genes",names(EdgeTable)), grep("name",names(EdgeTable)),
+                                    grep("similarity",names(EdgeTable))))
+
+names(EdgeTable) <- sub(pattern = "EM1_", replacement = "", x = names(EdgeTable))
+setnames(EdgeTable, c("OverlapSize", "OverlapGenes", "Name", "SimilarityCoefficient"))
+
+fwrite(setorderv(EdgeTable, cols = "SimilarityCoefficient", order = -1),
+       file = paste(currentStorage, "Fig", "GSEA",
+                    paste(dataType, contrast, paste("fdr", qvalue_gsea_threshold*100, sep = ""), "no_iea", "EdgeTable.csv", sep = "_"),
+                    sep = "/"),
+       row.names = FALSE)
+```
+
+### Get the cluster labels 
+
+For each cluster calculate the label of the set using Auto Annotate Cytoscape app. Using the descriptions of each geneset calculate the most frequent words in the cluster. 
+
+```{r}
+set_clusters <- unique(NodeTable$ClusterNumber)
+set_clusters <- set_clusters[which(set_clusters != 0)]
+
+ClusterTable <- list()
+
+for(i in 1:length(set_clusters)){
+
+    current_cluster <- set_clusters[i]
+    gs_in_cluster <- NodeTable$Name[which(NodeTable$ClusterNumber == current_cluster)]
+    nes_in_cluster <- NodeTable$NES[which(NodeTable$ClusterNumber == current_cluster)]
+    
+    # For each cluster of gs, get the gs descr to use in autoannotate
+    gs_in_cluster_descr <- NodeTable$GS_Description[which(NodeTable$Name %in% gs_in_cluster)]
+    descr_aa <- paste(paste(EM, "_GS_DESCR", sep = ""), gs_in_cluster_descr, sep = ":")
+    
+    autoannotate.url <- paste(base.url, "commands", "autoannotate", "label-clusterBoosted", sep = "/") 
+    autoannotate_params <- list(labelColumn = paste(EM, "_GS_DESCR", sep = ""), maxWords = 4, nodeList = paste(descr_aa, collapse = ","))
+
+    response <- GET(url = autoannotate.url, query = autoannotate_params)
+    response
+    
+    # Also get the Genes
+    gene_in_gs_in_cluster <- NodeTable$Genes[which(NodeTable$ClusterNumber == current_cluster)]
+    gene_in_gs_in_cluster <- unique(unlist(sapply(list(gene_in_gs_in_cluster), function (item) {strsplit(item, split = "|", fixed = TRUE)})))
+
+    #something really weird happening with the AA commands.  
+    #All of a sudden there are html tags attached to them
+    # Haven't changed the AA version.  Not  sure why it started 
+    #happening or if it is windows specific.
+    
+    #get rid of the html open tags
+    current_name <- strsplit(httr::content(response, "text", encoding = "ISO-8859-1"), ">")[[1]][2]
+    #get rid of the html close tags
+    current_name <- strsplit(current_name, "<")[[1]][1]
+    
+    #current_name <- gsub("\nFinished\n", "", httr::content(response, "text", encoding = "ISO-8859-1"))
+    
+    ClusterTable[[i]] <- data.table(ClusterNumber = current_cluster, ClusterLabel = current_name, NumberOfNodes = length(gs_in_cluster),
+                                    NodesLabel = paste(gs_in_cluster, collapse = "|"), NodesDescription = paste(gs_in_cluster_descr, collapse = "|"),
+                                    Genes = paste(gene_in_gs_in_cluster, collapse = "|"), NumberOfGenes = length(gene_in_gs_in_cluster),
+                                    Average_NES = mean(nes_in_cluster, na.rm = TRUE)
+                                          )
+}
+```
+
+### Add the singletons as well
+
+By default Auto annotates only adds annotations to clusters that have at least 2 nodes. Individual pathways (i.e individual nodes) are of just as much interest as clusters of them. Add annotations to the singleton nodes as well. 
+
+```{r}
+singletons <- which(is.na(NodeTable$ClusterNumber) | (NodeTable$ClusterNumber == 0))
+singletonTable <- list()
+if (length(singletons) > 0) { 
+       for(i in 1:length(singletons)){
+         name_singleton <- NodeTable$Name[singletons[i]]
+         descr_singleton <- NodeTable$GS_Description[singletons[i]]
+         gene_singleton <- NodeTable$Genes[singletons[i]]
+         gs_size_singleton <- NodeTable$GS_Size[singletons[i]]
+         nes_singleton <- NodeTable$NES[singletons[i]]
+         singletonTable[[i]] <- data.table(ClusterNumber = paste("Singleton", i, sep = "_"), ClusterLabel = name_singleton, NumberOfNodes = 1,
+                                           NodesLabel = name_singleton, NodesDescription = descr_singleton,
+                                           Genes = gene_singleton, NumberOfGenes = gs_size_singleton,
+                                           Average_NES = nes_singleton)
+       }
+  } else {
+       message("No singleton!")
+  }
+
+# ClusterTable
+ClusterTable <- rbindlist(l = list(rbindlist(ClusterTable, use.names = TRUE, fill = TRUE),
+                                   rbindlist(singletonTable, use.names = TRUE, fill = TRUE)),
+                          use.names = TRUE, fill = TRUE) # ALL cols are of class LIST!!
+
+sapply(ClusterTable,class)
+
+fwrite(setorderv(ClusterTable, cols = "NumberOfNodes", order = -1),
+       file = paste(currentStorage, "Fig", "GSEA",
+                    paste(dataType, contrast, paste("fdr", qvalue_gsea_threshold*100, sep = ""), "no_iea", "ClusterTable.csv", sep = "_"),
+                    sep = "/"),
+       row.names = FALSE)
+```
+
+## Word cloud
+
+```{r}
+wordcloud_params <- list(cloudName = "WordCloud",  
+                     create = TRUE,
+                     nodeList = "all",
+                     wordColumnName = paste(EM, "_GS_DESCR", sep = ""))
+
+request.url <- paste(base.url, "commands", "wordcloud", "create", sep = "/")
+request.res <- GET(url = request.url, query = wordcloud_params)
+request.res
+
+```
+
+
+### Get the clusters with the highest average NES values (POSITIVE , UP)
+
+```{r results = "asis", echo = FALSE}
+ClusterUp <- ClusterTable[which(ClusterTable[["Average_NES"]] > 0), ]
+ClusterUp <- setorderv(ClusterUp, cols = "Average_NES", order = -1)
+
+fwrite(ClusterUp,
+       file = paste(currentStorage, "Fig", "GSEA",
+                    paste(paste(dataType, contrast, "no_iea", sep = "_"),
+                          paste("fdr", qvalue_gsea_threshold*100, sep = ""), "ClusterUp.csv", sep = "_"),
+                    sep = "/"),
+       row.names = FALSE)
+```
+
+### Get the clusters with the highest average NES values (NEGATIVE , DOWN)
+
+```{r results = "asis", echo=FALSE}
+ClusterDown <- ClusterTable[which(ClusterTable[["Average_NES"]] < 0), ]
+ClusterDown <- setorderv(ClusterDown, cols = "Average_NES", order = 1)
+
+fwrite(ClusterDown,
+       file = paste(currentStorage, "Fig", "GSEA",
+                    paste(paste(dataType, contrast, "no_iea", sep = "_"),
+                          paste("fdr", qvalue_gsea_threshold*100, sep = ""), "ClusterDown.csv", sep = "_"),
+                    sep = "/"),
+       row.names = FALSE)
+```
