@@ -14,5 +14,5 @@ The detailed comments in each script show how to set up directories and librarie
 4. Do analysis on the differential gene expression (dge) result from step 3 (files with "furtherAnalysis" keyword):
     1. Provide visualisations on the result: word cloud, heatmap, volcano plot
     2. Network level: protein-protein interaction map, and word clouds for: GO terms, KEGG terms, protein family (Pfam), and InterPro
-5. Do Gene Set Enrichment Analysis (files with "GSEA" keyword), and generate raw GSEA data
+5. Do Gene Set Enrichment Analysis (files with "GSEA" keyword) on the dge result from step 3, and generate raw GSEA data
 6. Use the raw GSEA data to provide the gene set perspective on the network level (files with "GKPI" keyword); provide network maps and word clouds for GO terms, KEGG terms, Pfam, and InterPro
