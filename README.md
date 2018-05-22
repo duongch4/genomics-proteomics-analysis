@@ -4,7 +4,7 @@
 My summary report can be found at "report.pdf", showing results and discussion.
 
 ## No data provided
-I can only provide the R scripts that I used for the analyses, without the actual data. So they cannot be run, and for reading only.
+I can only provide the R scripts that I used for the analyses, without the actual data. So they cannot be run, and for reading purpose only.
 The detailed comments in each script show how to set up directories and libraries.
 
 ## My typical work flow for each of the genomic and proteomic analysis
